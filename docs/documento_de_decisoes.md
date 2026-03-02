@@ -1,8 +1,8 @@
-# Este documento contém minhas anotações referente a como eu fiz a leitura e entendimento deste desafio.
+# Este documento contém minhas anotações referentes a SITUAÇÕES e DECISÕES enfrentadas.
 
 ---
 
-## Conflito de informação sobre nome do microsserviço "usuário" que não está previsto
+## Microsserviço "usuário", que não está previsto:
 
 **SITUAÇÃO**: O time de segurança informou que os dados de CPF e número da conta não podem transitar fora do microsserviço de usuário, porém, não está previsto este microsserviço, e sim, está previsto que os dados de usuário devem ficar no microsserviço "contacorrete".  
 
