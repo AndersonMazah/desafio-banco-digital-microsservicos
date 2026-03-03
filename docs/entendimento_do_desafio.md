@@ -1,31 +1,31 @@
-# Este documento contém minhas anotações referentes a como interpretei a leitura do desafio.
+# Este documento contém minhas anotações referentes a como interpretei a leitura do desafio.  
 
---- 
+---  
 
 ## Requisitos Funcionais:  
-- Cadastro e autenticação de usuário;
-- Realização de movimentos na conta-corrente (depósito e saque);
-- Transferência entre contas da mesma instituição;
-- Consulta de saldo;
+- Cadastro e autenticação de usuário;  
+- Realização de movimentos na conta-corrente (depósito e saque);  
+- Transferência entre contas da mesma instituição;  
+- Consulta de saldo;  
 
-## Requisitos Não Funcionais:
-- Arquitetura baseada em microsserviços;
-- Cada microsserviço deve aplicar DDD;
-- Cada microsserviço deve aplicar CQRS;
-- Todos endpoints devem ser protegidos com token JWT;
-- Dados como, CPF, Número da conta, só podem transitar no microsserviço do usuário;
-- Todas as APIs devem conter projeto de testes automatizados;
-- Cada API deve rodar dentro de um contêiner docker;
-- Cada API deve estar preparada para ser executada em múltiplas réplicas (Kubernetes);
-- Os endpoints devem ser idempotentes (exceto Cadastro e Login);
+## Requisitos Não Funcionais:  
+- Arquitetura baseada em microsserviços;  
+- Cada microsserviço deve aplicar DDD;  
+- Cada microsserviço deve aplicar CQRS;  
+- Todos endpoints devem ser protegidos com token JWT;  
+- Dados como, CPF, Número da conta, só podem transitar no microsserviço do usuário;  
+- Todas as APIs devem conter projeto de testes automatizados;  
+- Cada API deve rodar dentro de um contêiner docker;  
+- Cada API deve estar preparada para ser executada em múltiplas réplicas (Kubernetes);  
+- Os endpoints devem ser idempotentes (exceto Cadastro e Login);  
 
-## Restrições Técnicas:
-- Cada API deve ser desenvolvida em .NET 8;
-- O banco de dados deve ser o SQLite;
+## Restrições Técnicas:  
+- Cada API deve ser desenvolvida em .NET 8;  
+- O banco de dados deve ser o SQLite;  
 
 ---
 
-## Banco de dados:
+## Banco de dados:  
 
 CREATE TABLE contacorrente (  
   idcontacorrente UUID PRIMARY KEY,  
@@ -43,131 +43,222 @@ CREATE TABLE contacorrente (
 
 ### Controller **USUARIO**:  
 
-#### POST **Cadastrar** ("/conta-corrente/usuario/cadastrar"):  
+#### POST **Cadastrar** ("/usuario/cadastrar"):  
 
-- Recebe o Nome, CPF e Senha:  
+obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_decisoes.md");
+
+1. Recebe no body o "nome", "cpf" e "senha":  
     {  
         "nome": "Nome do usuário",  
         "cpf": "000.000.000-00",  
         "senha": "Senha do usuário"  
     }  
 
-- Valida os campos Nome, CPF e Senha:  
-    - Nome: string, não nullo, mínimo 1 caracter e máximo 120 caracteres;  
-    - CPF: string, não nullo, mínimo e máximo de 11 caracteres;  
-    - Senha: string, não nullo, mínimo e máximo de 6 caracteres;  
+2. Validar campo "nome" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo 1 e máximo 120 caracteres.  
+    - caso seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "CPF Inválido",  
-        "type": "INVALID_DOCUMENT",  
+        "message": "Nome inválido",  
+        "type": "TYPE_INVALID_VALUE",  
         "data:" null  
     }  
 
-- Valida o CPF, e caso seja inválido, então, retornar status code 400:  
+3. Validar campo "cpf" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo e máximo de 11 caracteres, todos numéricos.  
+    - caso seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "CPF Inválido",  
-        "type": "INVALID_DOCUMENT",  
+        "message": "CPF inválido",  
+        "type": "TYPE_INVALID_DOCUMENT",  
         "data:" null  
     }  
 
-- Valida se o CPF já está cadastrado no banco, se já estiver cadastrado, então retorna status code 409:  
+4. Validar campo "senha" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo e máximo de 6 caracteres.  
+    - caso seja inválido, retornar status code STATUS_CODE_400_BAD_REQUEST com o seguinte response:  
+    {  
+        "message": "SENHA inválida",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data:" null  
+    }  
+
+5. Validar o CPF conforme algoritmo de validação de CPF.  
+    - caso seja inválido, retornar:   
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "CPF inválido",  
+        "type": "TYPE_INVALID_DOCUMENT",  
+        "data:" null  
+    }  
+
+6. Valida se o CPF já está cadastrado no banco.  
+    - se já estiver cadastrado, retorna:  
+    STATUS_CODE_409_CONFLICT  
     {  
         "message": "CPF já cadastrado",  
-        "type": "DOCUMENT_ALREADY_REGISTERED",  
+        "type": "TYPE_ALREADY_EXISTS",  
         "data:" null  
     }  
 
-- Caso os dados estejam válidos, então:    
-    - Gerar um salt aleatório, em seguida gerar um senha_hash usando (senha + salt).  
+7. Caso os dados estejam válidos, então:  
+    - Gerar um "salt" aleatório, em seguida gerar um "senha_hash" usando ("senha" + "salt").  
     - Inserir um registro no banco na tabela "contacorrente", com as seguintes informações:  
-          insert into contacorrente (idcontacorrente, nome, cpf, senha_hash, salt) values ('abc..uuid', 'nome do cliente', 'cpf', 'senha_hash', 'salt');  
-    - Obter o número da conta do registro recém inserido e retornar o status code 201 juntamente com este numero da conta.  
+          insert into contacorrente (idcontacorrente, nome, cpf, senha_hash, salt) values ('new uuid()', 'nome do cliente', 'cpf', 'senha_hash', 'salt');  
+    - Obter e retornar o número da conta do registro recém inserido:  
+    STATUS_CODE_201_CREATED  
     {  
         "message": "Usuário cadastrado",  
-        "type": "CUSTOMER_CREATED",  
+        "type": "TYPE_SUCCESS",  
         "data":  {  
             "conta": "número da conta"  
         }  
     }  
 
 
+#### PATCH **INATIVAR** ("/usuario/inativar"):  
+
+1. Validar se o token JWT presente no header é válido.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+2. Obter o ID da conta corrente que está dentro do token JWT;  
+
+3. Recebe a senha no body:  
+    {  
+        "senha": "Senha do usuário"  
+    }  
+
+4. Validar o campo "senha" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo e máximo de 6 caracteres.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "SENHA inválida",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data:" null  
+    }  
+
+5. Buscar o registro da conta corrente que está no banco via o ID do mesmo.  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    {  
+        "message": "Conta inválida",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data:" null  
+    }  
+
+6. Validar se o registro já está com status ativo.  
+    - caso registro esteja com status inativo, retornar:  
+    STATUS_CODE_409_CONFLICT  
+    {  
+        "message": "A conta já está inativa",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data:" null  
+    }  
+
+7. Validar se a senha informada confere com a senha do banco (via validação com senha_hash + salt).  
+    - caso a senha não confira, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+8. Alterar o status para "ativo" do registro e persistir no banco e retornar:  
+    STATUS_CODE_204_NO_CONTENT  
+    {  
+        "message": "Usuário Inativado",  
+        "type": "TYPE_SUCCESS",  
+        "data:" null  
+    }  
+
+
 ### Controller **AUTH**:
 
-#### POST **Login** ("/conta-corrente/auth/login"):  
-- Não recebe TOKEN JWT no HEADER;
+#### POST **Login** ("/auth/login"):  
 
-- Recebe (Numero da Conta ou CPF) e Senha:  
+obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_decisoes.md");  
+
+1. Recebe ("conta" ou "cpf") e "senha":  
     {  
         "conta": "número da conta",  
         "cpf": "000.000.000-00",  
         "senha": "Senha do usuário"  
     }  
 
-- Validar os campos:  
-    - Conta: inteiro nulável. Se houver valor, validar se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
-    - CPF: string nulável. Se houver valor, remover os espaços, remover (".","-") e o restante deve ter no mínimo e máximo de 11 caracteres, e este cpf deve estar válido (validar conforme regra de validação de CPF);  
-    - Senha: string, não nullo, mínimo e máximo de 6 caracteres;  
-    - Validar se existe conta, se existir, considerar o login com conta, senão existir, validar se existe cpf e, se existir, considerar login com cpf;  
-    - Se nem numero da conta e nem cpf existirem, então, retornar status code 401:  
+2. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
+    - caso tenha valor e o valor seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "Usuário não autorizado",  
-        "type": "USER_UNAUTHORIZED",  
+        "message": "Conta inválida",  
+        "type": "TYPE_INVALID_VALUE",  
         "data:" null  
     }  
 
-- Localizar o registro do usuário pela conta ou CPF, caso não encontre, então, retornar status code 401:  
+3. Validar o campo "cpf" (opcional). Se houver valor, remover os espaços, remover (".","-") e o restante deve ter no mínimo e máximo de 11 caracteres e este cpf deve estar válido (validar conforme regra de validação de CPF);  
+    - caso tenha valor e o valor seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "Usuário não autorizado",  
-        "type": "USER_UNAUTHORIZED",  
+        "message": "CPF inválido",  
+        "type": "TYPE_INVALID_VALUE",  
         "data:" null  
     }  
 
-- Validar a senha com a senha_hash e salt no banco., caso o hash resultante não confira, então, retornar status code 401:  
+4. Validar se ao menos um dos campos está preenchido (e válido), ou o campo "conta" ou o campo "cpf";  
+    - caso nenhum dos campos esteja preenchido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "Usuário não autorizado",  
-        "type": "USER_UNAUTHORIZED",  
+        "message": "É necessário informar a Conta ou o CPF",  
+        "type": "TYPE_INVALID_VALUE",  
         "data:" null  
     }  
 
-- Validar se o usuário está ativo, caso não esteja, retornar status code 401:  
+5. Validar o campo "senha", que é obrigatório. Deve ser removido os espaços no início e fim, e ter no mínimo e no máximo 6 caracteres.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "Usuário não autorizado",  
-        "type": "USER_UNAUTHORIZED",  
+        "message": "SENHA inválida",  
+        "type": "TYPE_INVALID_VALUE",  
         "data:" null  
     }  
 
-- Caso o usuário seja localizado (pela conta ou cpf) e a senha esteja correta, então:  
-    - Gerar token JWT contendo (id do usuário) e retornar no body com status 200;
+6. Buscar o registro da conta corrente que está no banco via "conta" ou "cpf" (o que vier primeiro);  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_NOT_FOUND",  
+        "data:" null  
+    }  
+
+7. Validar se a senha informada confere com a senha do banco (via validação com senha_hash + salt).  
+    - caso a senha não confira, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+8. Validar se o registro da conta corrente está com status ativo;  
+    - caso não esteja, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+9. Se não houver nenhum erro, então, gerar token JWT contendo (id do usuário) e retornar:  
+    STATUS_CODE_200_OK  
     {  
         "message": "Usuário autenticado",  
-        "type": "USER_AUTHORIZED",  
+        "type": "TYPE_USER_AUTHORIZED",  
         "data:" token_jwt  
     }  
-
-
-#### PATCH **Cadastrar** ("/conta-corrente/usuario/inativar"):  
-- Recebe TOKEN JWT no HEADER. Validar se o token é válido, senão for, então retorna status code 403;  
-
-- Obter o ID da conta corrente que está dentro do token;  
-
-- Recebe a senha no body:  
-    {  
-        "senha": "Senha do usuário"  
-    }  
-
-- Buscar o registro do usuário que está no banco via o ID do mesmo. Senão encontrar ou se encontrar e este já estiver inativo, retornar status code 401.  
-
-- Validar se a senha é válida, senaõ for, retornar status code 403.  
-
-- Validar o status "ativo" do registro do usuário para false e retornar status code 204.  
-
-
-
-
-
-
-
-
-
 
 
 
@@ -182,19 +273,66 @@ CREATE TABLE contacorrente (
 
 ---
 
+## Padrão de status code:  
+
+- STATUS_CODE_200_OK - Requisição bem sucedida.  
+- STATUS_CODE_201_CREATED - Quando um recurso foi criado com sucesso.  
+- STATUS_CODE_204_NO_CONTENT - Quando a operação foi concluído e não tem conteúdo de retorno.  
+
+- STATUS_CODE_400_BAD_REQUEST - Quando a requisição é inválida.  
+- STATUS_CODE_401_UNAUTHORIZED - Quando não há token ou ele está inválido.  
+- STATUS_CODE_403_FORBIDDEN - Quando o usuário não tem permissão.  
+- STATUS_CODE_404_NOT_FOUND - Quando o recurso não existe.
+- STATUS_CODE_409_CONFLICT - Quando o recurso já existe ou, conflito de informações.  
+
+
 ## Padrão de respostas rest:
     {  
-        "message": "Usuário cadastrado",  
-        "type": "SUCESSO",  
-        "data":  null
-    }
+        "message": "frase pequena, no máximo uns 50 caracteres",  
+        "type": type,  
+        "data":  null  
+    }  
 
-   type:  
-      - INVALID_DOCUMENT;  
-      - DOCUMENT_ALREADY_REGISTERED;  
-      - CUSTOMER_CREATED;  
-      - USER_UNAUTHORIZED;
-      - USER_AUTHORIZED;
+### TYPE:  
+
+#### API Conta Corrente:  
+
+##### Cadastro:  
+
+- TYPE_INVALID_DOCUMENT- Quando o CPF for inválido.  
+- TYPE_ALREADY_EXISTS (minha sugestão) - CPF já está cadastrado no sistema;  
+
+##### Login:  
+- TYPE_USER_UNAUTHORIZED - Quando número/CPF ou senha estiver incorreto.  
+- TYPE_NOT_FOUND (minha sugestão) - Registro não encontrado;  
+
+##### Inativar:  
+- TYPE_INVALID_ACCOUNT - Apenas contas cadastradas podem receber movimentação.  
+- TYPE_SUCCESS (minha sugestão)- Operação realizada com sucesso.  
+
+##### Movimentacao:  
+
+- TYPE_INVALID_ACCOUNT - Apenas contas cadastradas podem receber movimentação.  
+- TYPE_INACTIVE_ACCOUNT - Apenas contas ativas podem receber movimentação.  
+- TYPE_INVALID_VALUE - Apenas valores positivos podem ser recebidos.  
+- TYPE_INVALID_TYPE - Tipo diferente de débito ou crédito.  
+- TYPE_INVALID_TYPE = Tipo débito não permitido para conta diferente do usuário logado.  
+
+
+- TYPE_USER_AUTHORIZED;
+
+##### Saldo:  
+
+- TYPE_INVALID_ACCOUNT - Conta não cadastrada.  
+- TYPE_INACTIVE_ACCOUNT - Apenas contas ativas podem receber movimentação.  
+
+#### API Transferência:  
+
+##### Transferir:  
+
+- TYPE_INVALID_ACCOUNT - Apenas contas cadastradas podem realizar transferência.  
+- TYPE_INACTIVE_ACCOUNT - Apenas contas ativas podem realizar transferência.  
+- TYPE_INVALID_VALUE - Valor não positivo.  
 
 ---
 

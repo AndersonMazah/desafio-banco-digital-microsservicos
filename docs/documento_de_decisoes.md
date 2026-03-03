@@ -2,13 +2,13 @@
 
 ---
 
-## Microsserviço "usuário", que não está previsto:
+## Time de Segurança:  
 
-**SITUAÇÃO**: O time de segurança informou que os dados de CPF e número da conta não podem transitar fora do microsserviço de usuário, porém, não está previsto este microsserviço, e sim, está previsto que os dados de usuário devem ficar no microsserviço "contacorrete".
+**SITUAÇÃO 1**: O time de segurança informou que os dados de CPF e número da conta não podem transitar fora do microsserviço de usuário, porém, não está previsto este microsserviço, e sim, está previsto que os dados de usuário devem ficar no microsserviço "contacorrete".  
+**DECISÃO 1**: Vou considerar que o time de segurança desconhece detalhes dos microsserviços (nomes deles) ou até que, o time se confundiou, e trabalhar este requisito como, aplicável apenas no microsserviço de contacorrente.  
 
-**DECISÃO**: Vou considerar que o time de segurança desconhece detalhes dos microsserviços (nomes deles) ou até que, o time se confundiou, e trabalhar este requisito como, aplicável apenas no microsserviço de contacorrente.
-
-Obs.: Em situação real, o ideal é consultar o time de segurança antes de tomar esta decisão.
+**SITUAÇÃO 2**: O time de segurança informou que todos os endpoints devem estar protegidos com autenticação via JWT (nenhum endpoint pode ser acessdo sem token válido). Mas com isso, existe um problema: Se todos os endpoints devem estar protegidos, como se dará o cadastro do primeiro usuário?  
+**DECISÃO 2**: Manter apenas 2 endpoints públicos, o de **cadastro** e o de **login**. O endpoint de cadastro permite que um novo usuário se registre informando seus dados sem exigir JWT, e o de login, também sem exigir token, valida as credenciais e retorna um JWT quando estiverem corretas.  
 
 ---
 
@@ -32,6 +32,10 @@ Obs.: Em situação real, o ideal é consultar o time de segurança antes de tom
 
 **SITUAÇÃO 3**: Não há informação sobre o tipo/formato do campo **número da conta**.  
 **DECISÃO 3**: Optei por definir o numero da conta como um inteiro (bigint no banco e long no back, ou seja, 8 bytes). Este número de conta será gerenciado pelo campo numero da tabela, que será do tipo identity e unique.  
+
+**SITUAÇÃO 4**: No endpoint de Inativar, na regra que valida se o usuário está com token válido ou expirado, está sendo utilizado o status code 403 como retorno. Contudo, o correto para esse caso é retornar o status code 401, pois se trata de falha de autenticação e não de autorização.  
+**DECISÃO 4**: Decidi utilizar o status code 401 para essa validação, a fim de manter a coerência com o padrão REST.  
+
 
 ---
 
