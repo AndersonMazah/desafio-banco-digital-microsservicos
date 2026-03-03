@@ -190,7 +190,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     }  
 
 2. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
-    - caso tenha valor e o valor seja inválido, retornar:
+    - caso tenha valor e o valor seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Conta inválida",  
@@ -199,7 +199,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     }  
 
 3. Validar o campo "cpf" (opcional). Se houver valor, remover os espaços, remover (".","-") e o restante deve ter no mínimo e máximo de 11 caracteres e este cpf deve estar válido (validar conforme regra de validação de CPF);  
-    - caso tenha valor e o valor seja inválido, retornar:
+    - caso tenha valor e o valor seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "CPF inválido",  
@@ -208,7 +208,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     }  
 
 4. Validar se ao menos um dos campos está preenchido (e válido), ou o campo "conta" ou o campo "cpf";  
-    - caso nenhum dos campos esteja preenchido, retornar:
+    - caso nenhum dos campos esteja preenchido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "É necessário informar a Conta ou o CPF",  
@@ -260,6 +260,103 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data:" token_jwt  
     }  
 
+
+### Controller **CONTA**:
+
+#### POST **movimentar** ("/conta/movimentar"):  
+
+1. Validar se o token JWT presente no header é válido.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+2. Obter o ID da conta corrente que está dentro do token JWT;  
+
+3. Recebe no body: "conta" (opcional), "id_requisicao", "valor" e "tipo":  
+    {  
+        "conta": "número nullável (opcional)",  
+        "id_requisicao": "uuid vindo do front",  
+        "valor": 0.01,  
+        "tipo": "[C|D]"  
+    }  
+
+4. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
+    - caso tenha valor e o valor seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "Conta inválida",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data:" null  
+    }  
+
+5. id_requisicao": TENHO DÚVIDAS DE COMO PROCEDER COM ESTA INFORMAÇÃO: TODO : VALIDAR, VERIFICAR?  
+    - caso seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "ID inválida",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data:" null  
+    }  
+
+6. Validar o campo "valor" (obrigatório). Deve ser um valor maior que zero, com duas casas decimais;  
+    - caso seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "Valor inválido",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data:" null  
+    }  
+
+7. Validar o campo "tipo" (obrigatório). Deve conter a letra "C" ou a letra "D";  
+    - caso seja inválido, retornar:
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "Tipo inválido",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data:" null  
+    }  
+
+8. Caso a conta que vier no body tenha valor, considerar ela, se não, considerar o id da conta corrente presente no token, ou seja:
+    - será considerado a "conta" se ela estiver presente no body, ou, será considerado o uuid da conta presente no token.
+
+9. Buscar o registro da conta corrente que está no banco via "conta" ou "uuid do token";  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    {  
+        "message": "Conta não localizada",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data:" null  
+    }  
+
+10. Validar se o registro da conta corrente está ativo;  
+    - caso não esteja ativo, retornar.  
+    STATUS_CODE_409_CONFLICT  
+    {  
+        "message": "Conta está inativa",  
+        "type": "TYPE_INACTIVE_ACCOUNT",  
+        "data:" null  
+    }  
+
+11. Se o id do registro de conta corrente não pertencer ao usuário logado, validar se o tipo é "C";
+    - caso não seja, retornar.  
+    STATUS_CODE_409_CONFLICT  
+    {  
+        "message": "Movimento de conta não permitido",  
+        "type": "TYPE_INVALID_TYPE",  
+        "data:" null  
+    }  
+
+12. Caso não tenha nenhum erro, então, inserir um registro na tabela movimento contendo ("idcontacorrente", "datamovimento", "tipo" e "valor") e retornar:  
+    STATUS_CODE_204_NO_CONTENT
+    {  
+        "message": "Movimento cadastrado com sucesso",  
+        "type": "TYPE_SUCCESS",  
+        "data:" null  
+    }  
 
 
 
