@@ -39,41 +39,45 @@ CREATE TABLE contacorrente (
 
 ---
 
-# API Conta-Corrente:
+# API Conta-Corrente:  
 
-### Controller **USUARIO**:
+### Controller **USUARIO**:  
 
-#### POST **Cadastrar** ("/conta-corrente/cadastrar"):  
+#### POST **Cadastrar** ("/conta-corrente/usuario/cadastrar"):  
+
 - Recebe o Nome, CPF e Senha:  
     {  
         "nome": "Nome do usuário",  
         "cpf": "000.000.000-00",  
         "senha": "Senha do usuário"  
     }  
+
 - Valida os campos Nome, CPF e Senha:  
-    - Nome: string, não nullo, mínimo 1 caracter e máximo 120 caracteres;
-    - CPF: string, não nullo, mínimo e máximo de 11 caracteres;
-    - Senha: string, não nullo, mínimo e máximo de 6 caracteres;
+    - Nome: string, não nullo, mínimo 1 caracter e máximo 120 caracteres;  
+    - CPF: string, não nullo, mínimo e máximo de 11 caracteres;  
+    - Senha: string, não nullo, mínimo e máximo de 6 caracteres;  
     {  
-        "message": ""CPF Inválido",  
+        "message": "CPF Inválido",  
         "type": "INVALID_DOCUMENT",  
         "data:" null  
     }  
 
 - Valida o CPF, e caso seja inválido, então, retornar status code 400:  
     {  
-        "message": ""CPF Inválido",  
+        "message": "CPF Inválido",  
         "type": "INVALID_DOCUMENT",  
         "data:" null  
     }  
+
 - Valida se o CPF já está cadastrado no banco, se já estiver cadastrado, então retorna status code 409:  
     {  
         "message": "CPF já cadastrado",  
         "type": "DOCUMENT_ALREADY_REGISTERED",  
         "data:" null  
     }  
+
 - Caso os dados estejam válidos, então:    
-    - Gerar um salt aleatório, em seguida gerar um senha_hash usando (senha + salt).
+    - Gerar um salt aleatório, em seguida gerar um senha_hash usando (senha + salt).  
     - Inserir um registro no banco na tabela "contacorrente", com as seguintes informações:  
           insert into contacorrente (idcontacorrente, nome, cpf, senha_hash, salt) values ('abc..uuid', 'nome do cliente', 'cpf', 'senha_hash', 'salt');  
     - Obter o número da conta do registro recém inserido e retornar o status code 201 juntamente com este numero da conta.  
@@ -84,6 +88,77 @@ CREATE TABLE contacorrente (
             "conta": "número da conta"  
         }  
     }  
+
+
+### Controller **AUTH**:
+
+#### POST **Login** ("/conta-corrente/auth/login"):  
+- Não recebe TOKEN JWT no HEADER;
+
+- Recebe (Numero da Conta ou CPF) e Senha:  
+    {  
+        "conta": "número da conta",  
+        "cpf": "000.000.000-00",  
+        "senha": "Senha do usuário"  
+    }  
+
+- Validar os campos:  
+    - Conta: inteiro nulável. Se houver valor, validar se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
+    - CPF: string nulável. Se houver valor, remover os espaços, remover (".","-") e o restante deve ter no mínimo e máximo de 11 caracteres, e este cpf deve estar válido (validar conforme regra de validação de CPF);  
+    - Senha: string, não nullo, mínimo e máximo de 6 caracteres;  
+    - Validar se existe conta, se existir, considerar o login com conta, senão existir, validar se existe cpf e, se existir, considerar login com cpf;  
+    - Se nem numero da conta e nem cpf existirem, então, retornar status code 401:  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+- Localizar o registro do usuário pela conta ou CPF, caso não encontre, então, retornar status code 401:  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+- Validar a senha com a senha_hash e salt no banco., caso o hash resultante não confira, então, retornar status code 401:  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+- Validar se o usuário está ativo, caso não esteja, retornar status code 401:  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "USER_UNAUTHORIZED",  
+        "data:" null  
+    }  
+
+- Caso o usuário seja localizado (pela conta ou cpf) e a senha esteja correta, então:  
+    - Gerar token JWT contendo (id do usuário) e retornar no body com status 200;
+    {  
+        "message": "Usuário autenticado",  
+        "type": "USER_AUTHORIZED",  
+        "data:" token_jwt  
+    }  
+
+
+#### PATCH **Cadastrar** ("/conta-corrente/usuario/inativar"):  
+- Recebe TOKEN JWT no HEADER. Validar se o token é válido, senão for, então retorna status code 403;  
+
+- Obter o ID da conta corrente que está dentro do token;  
+
+- Recebe a senha no body:  
+    {  
+        "senha": "Senha do usuário"  
+    }  
+
+- Buscar o registro do usuário que está no banco via o ID do mesmo. Senão encontrar ou se encontrar e este já estiver inativo, retornar status code 401.  
+
+- Validar se a senha é válida, senaõ for, retornar status code 403.  
+
+- Validar o status "ativo" do registro do usuário para false e retornar status code 204.  
 
 
 
@@ -114,10 +189,13 @@ CREATE TABLE contacorrente (
         "data":  null
     }
 
-   type:
-      - INVALID_DOCUMENT
-      - DOCUMENT_ALREADY_REGISTERED
-      - CUSTOMER_CREATED
+   type:  
+      - INVALID_DOCUMENT;  
+      - DOCUMENT_ALREADY_REGISTERED;  
+      - CUSTOMER_CREATED;  
+      - USER_UNAUTHORIZED;
+      - USER_AUTHORIZED;
+
 ---
 
 
