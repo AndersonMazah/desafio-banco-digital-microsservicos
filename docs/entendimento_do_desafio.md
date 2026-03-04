@@ -21,21 +21,35 @@
 
 ## Restrições Técnicas:  
 - Cada API deve ser desenvolvida em .NET 8;  
-- O banco de dados deve ser o SQLite;  
+- O banco de dados é o PostgreSQL (ver documento de decisões);  
 
 ---
 
 ## Banco de dados:  
 
 CREATE TABLE contacorrente (  
-  idcontacorrente UUID PRIMARY KEY,  
+  idcontacorrente UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
   numero BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,  
-  cpf VARCHAR(11) NOT NULL UNIQUE,  
+  cpf CHAR(11) NOT NULL UNIQUE CHECK (cpf ~ '^[0-9]{11}$'),  
   nome VARCHAR(120) NOT NULL,  
   ativo BOOLEAN NOT NULL DEFAULT TRUE,  
   senha_hash BYTEA NOT NULL,  
   salt BYTEA NOT NULL  
 );  
+
+CREATE TABLE idempotencia (  
+  ididempotencia UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+  requisicao UUID NOT NULL UNIQUE,         /* aqui será mitigado possíveis problemas de concorrência */  
+  status BOOLEAN NOT NULL DEFAULT false,   /* false=Processo em andamento, true=Processo já concluído */  
+  status_code CHAR(3) NOT NULL DEFAULT '202',  
+  resultado TEXT  
+);  
+
+## Premissas assumidas (anotadas no documento de decisões.md)
+- é permitido movimentar conta com saldo negativo;  
+- a senha foi fixada em 6 caracteres alfanuméricos;  
+- o CPF é armazenado sem máscara;  
+- o token JWT contém idcontacorrente do usuário;  
 
 ---
 
@@ -55,29 +69,30 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     }  
 
 2. Validar campo "nome" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo 1 e máximo 120 caracteres.  
-    - caso seja inválido, retornar:
+    - caso seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Nome inválido",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
-3. Validar campo "cpf" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo e máximo de 11 caracteres, todos numéricos.  
-    - caso seja inválido, retornar:
+3. Validar campo "cpf" no modelo de entrada: string obrigatória, remover máscara (".", "-"), espaços no início e fim, mínimo e máximo de 11 caracteres, todos numéricos.  
+    - caso seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "CPF inválido",  
         "type": "TYPE_INVALID_DOCUMENT",  
-        "data:" null  
+        "data": null  
     }  
 
 4. Validar campo "senha" no modelo de entrada: string obrigatória, remover espaços no início e fim, mínimo e máximo de 6 caracteres.  
-    - caso seja inválido, retornar status code STATUS_CODE_400_BAD_REQUEST com o seguinte response:  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST
     {  
         "message": "SENHA inválida",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
 5. Validar o CPF conforme algoritmo de validação de CPF.  
@@ -86,7 +101,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "CPF inválido",  
         "type": "TYPE_INVALID_DOCUMENT",  
-        "data:" null  
+        "data": null  
     }  
 
 6. Valida se o CPF já está cadastrado no banco.  
@@ -95,13 +110,14 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "CPF já cadastrado",  
         "type": "TYPE_ALREADY_EXISTS",  
-        "data:" null  
+        "data": null  
     }  
 
 7. Caso os dados estejam válidos, então:  
     - Gerar um "salt" aleatório, em seguida gerar um "senha_hash" usando ("senha" + "salt").  
     - Inserir um registro no banco na tabela "contacorrente", com as seguintes informações:  
-          insert into contacorrente (idcontacorrente, nome, cpf, senha_hash, salt) values ('new uuid()', 'nome do cliente', 'cpf', 'senha_hash', 'salt');  
+          INSERT INTO contacorrente (idcontacorrente, nome, cpf, senha_hash, salt) values ('new uuid()', 'nome do cliente', 'cpf', 'senha_hash', 'salt');  
+          RETURNING numero;
     - Obter e retornar o número da conta do registro recém inserido:  
     STATUS_CODE_201_CREATED  
     {  
@@ -121,7 +137,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Usuário não autorizado",  
         "type": "TYPE_USER_UNAUTHORIZED",  
-        "data:" null  
+        "data": null  
     }  
 
 2. Obter o ID da conta corrente que está dentro do token JWT;  
@@ -137,7 +153,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "SENHA inválida",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
 5. Buscar o registro da conta corrente que está no banco via o ID do mesmo.  
@@ -146,7 +162,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Conta inválida",  
         "type": "TYPE_INVALID_ACCOUNT",  
-        "data:" null  
+        "data": null  
     }  
 
 6. Validar se o registro já está com status ativo.  
@@ -155,7 +171,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "A conta já está inativa",  
         "type": "TYPE_INVALID_ACCOUNT",  
-        "data:" null  
+        "data": null  
     }  
 
 7. Validar se a senha informada confere com a senha do banco (via validação com senha_hash + salt).  
@@ -164,16 +180,11 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Usuário não autorizado",  
         "type": "TYPE_USER_UNAUTHORIZED",  
-        "data:" null  
+        "data": null  
     }  
 
-8. Alterar o status para "ativo" do registro e persistir no banco e retornar:  
+8. Alterar o campo "ativo" para false, persistir no banco e retornar:  
     STATUS_CODE_204_NO_CONTENT  
-    {  
-        "message": "Usuário Inativado",  
-        "type": "TYPE_SUCCESS",  
-        "data:" null  
-    }  
 
 
 ### Controller **AUTH**:
@@ -189,22 +200,22 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "senha": "Senha do usuário"  
     }  
 
-2. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
+2. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um long (long.MaxValue);  
     - caso tenha valor e o valor seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Conta inválida",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
-3. Validar o campo "cpf" (opcional). Se houver valor, remover os espaços, remover (".","-") e o restante deve ter no mínimo e máximo de 11 caracteres e este cpf deve estar válido (validar conforme regra de validação de CPF);  
+3. Validar campo "cpf" (opcional). no modelo de entrada: string obrigatória, remover máscara (".", "-"), espaços no início e fim, mínimo e máximo de 11 caracteres, todos numéricos.  
     - caso tenha valor e o valor seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "CPF inválido",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
 4. Validar se ao menos um dos campos está preenchido (e válido), ou o campo "conta" ou o campo "cpf";  
@@ -213,7 +224,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "É necessário informar a Conta ou o CPF",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
 5. Validar o campo "senha", que é obrigatório. Deve ser removido os espaços no início e fim, e ter no mínimo e no máximo 6 caracteres.  
@@ -222,16 +233,16 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "SENHA inválida",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
-6. Buscar o registro da conta corrente que está no banco via "conta" ou "cpf" (o que vier primeiro);  
+6. Buscar o registro da conta corrente que está no banco via "conta" ou "cpf" (se conta estiver preenchida, usar conta, senão, usar cpf);  
     - caso não encontre o registro, retornar.  
     STATUS_CODE_404_NOT_FOUND  
     {  
         "message": "Usuário não autorizado",  
-        "type": "TYPE_NOT_FOUND",  
-        "data:" null  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data": null  
     }  
 
 7. Validar se a senha informada confere com a senha do banco (via validação com senha_hash + salt).  
@@ -240,7 +251,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Usuário não autorizado",  
         "type": "TYPE_USER_UNAUTHORIZED",  
-        "data:" null  
+        "data": null  
     }  
 
 8. Validar se o registro da conta corrente está com status ativo;  
@@ -249,7 +260,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Usuário não autorizado",  
         "type": "TYPE_USER_UNAUTHORIZED",  
-        "data:" null  
+        "data": null  
     }  
 
 9. Se não houver nenhum erro, então, gerar token JWT contendo (id do usuário) e retornar:  
@@ -257,7 +268,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Usuário autenticado",  
         "type": "TYPE_USER_AUTHORIZED",  
-        "data:" token_jwt  
+        "data": token_jwt  
     }  
 
 
@@ -271,7 +282,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     {  
         "message": "Usuário não autorizado",  
         "type": "TYPE_USER_UNAUTHORIZED",  
-        "data:" null  
+        "data": null  
     }  
 
 2. Obter o ID da conta corrente que está dentro do token JWT;  
@@ -284,88 +295,85 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "tipo": "[C|D]"  
     }  
 
-4. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um lont (long.MaxValue);  
-    - caso tenha valor e o valor seja inválido, retornar:
+4. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um long (long.MaxValue);  
+    - caso tenha valor e o valor seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Conta inválida",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
-5. id_requisicao": TENHO DÚVIDAS DE COMO PROCEDER COM ESTA INFORMAÇÃO: TODO : VALIDAR, VERIFICAR?  
-    - caso seja inválido, retornar:
+5. Validar o campo "id_requisicao". Deve ser do tipo **uuid** e obrigatório;  
+    - caso seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
-        "message": "ID inválida",  
+        "message": "ID Requisição inválido",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
-6. Validar o campo "valor" (obrigatório). Deve ser um valor maior que zero, com duas casas decimais;  
-    - caso seja inválido, retornar:
+6. Validar o campo "valor" (obrigatório). Deve ser um valor maior que zero;  
+    - caso seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Valor inválido",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
 7. Validar o campo "tipo" (obrigatório). Deve conter a letra "C" ou a letra "D";  
-    - caso seja inválido, retornar:
+    - caso seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Tipo inválido",  
         "type": "TYPE_INVALID_VALUE",  
-        "data:" null  
+        "data": null  
     }  
 
 8. Caso a conta que vier no body tenha valor, considerar ela, se não, considerar o id da conta corrente presente no token, ou seja:
     - será considerado a "conta" se ela estiver presente no body, ou, será considerado o uuid da conta presente no token.
 
-9. Buscar o registro da conta corrente que está no banco via "conta" ou "uuid do token";  
+9. Buscar na tabela "idempotencia", pelo campo da tabela "requisicao" o valor recebido em "id_idempotencia";  
+   - Se encontrar registro:
+      - Se o valor de "status"==false, (significa que o processo está em andamento), então retornar: 
+      - Se o valor de "status"==true, (significa que o processo já terminou), então, retornar o valor que está no campo "resultado" juntamente o com o campo "status_code";  
+   - Senão encontrar registro, então, inserir novo registro nesta tabela (requisicao=id_requisicao);  
+
+10. Buscar o registro da conta corrente que está no banco";  
     - caso não encontre o registro, retornar.  
     STATUS_CODE_404_NOT_FOUND  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
     {  
         "message": "Conta não localizada",  
         "type": "TYPE_INVALID_ACCOUNT",  
-        "data:" null  
+        "data": null  
     }  
 
-10. Validar se o registro da conta corrente está ativo;  
+11. Validar se o registro da conta corrente está ativo;  
     - caso não esteja ativo, retornar.  
     STATUS_CODE_409_CONFLICT  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
     {  
         "message": "Conta está inativa",  
         "type": "TYPE_INACTIVE_ACCOUNT",  
-        "data:" null  
+        "data": null  
     }  
 
-11. Se o id do registro de conta corrente não pertencer ao usuário logado, validar se o tipo é "C";
+12. Se o id do registro de conta corrente não pertencer ao usuário logado, validar se o tipo é "C";
     - caso não seja, retornar.  
-    STATUS_CODE_409_CONFLICT  
+    STATUS_CODE_400_BAD_REQUEST  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
     {  
         "message": "Movimento de conta não permitido",  
         "type": "TYPE_INVALID_TYPE",  
-        "data:" null  
+        "data": null  
     }  
 
-12. Caso não tenha nenhum erro, então, inserir um registro na tabela movimento contendo ("idcontacorrente", "datamovimento", "tipo" e "valor") e retornar:  
-    STATUS_CODE_204_NO_CONTENT
-    {  
-        "message": "Movimento cadastrado com sucesso",  
-        "type": "TYPE_SUCCESS",  
-        "data:" null  
-    }  
-
-
-
-
-
-
-
-
-
+13. Caso não tenha nenhum erro, então;  
+    - Inserir um registro na tabela movimento contendo ("idcontacorrente", "datamovimento", "tipo" e "valor");  
+    - Atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+    STATUS_CODE_204_NO_CONTENT  
 
 
 ---
@@ -382,7 +390,6 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
 - STATUS_CODE_404_NOT_FOUND - Quando o recurso não existe.
 - STATUS_CODE_409_CONFLICT - Quando o recurso já existe ou, conflito de informações.  
 
-
 ## Padrão de respostas rest:
     {  
         "message": "frase pequena, no máximo uns 50 caracteres",  
@@ -390,46 +397,20 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data":  null  
     }  
 
-### TYPE:  
+### TYPEs - Presentes no Enunciado:  
+- TYPE_INVALID_DOCUMENT- Quando o documento for inválido (por exemplo, o CPF).  
+- TYPE_INVALID_ACCOUNT - Quando a conta corrente for inválida.  
+- TYPE_INACTIVE_ACCOUNT - Quando a conta corrente estiver inativa.  
+- TYPE_INVALID_VALUE - Quando algum valor inválido for recebido via parâmetro/body.  
+- TYPE_INVALID_TYPE - Quando for identificado alguma divergência em tipos de valores.  
+- TYPE_USER_UNAUTHORIZED - Quando o usuário atutenticado não tem permissão para executar alguma ação.  
+- TYPE_USER_AUTHORIZED - Quando o usuário efetua uma autenticação via login.  
 
-#### API Conta Corrente:  
-
-##### Cadastro:  
-
-- TYPE_INVALID_DOCUMENT- Quando o CPF for inválido.  
-- TYPE_ALREADY_EXISTS (minha sugestão) - CPF já está cadastrado no sistema;  
-
-##### Login:  
-- TYPE_USER_UNAUTHORIZED - Quando número/CPF ou senha estiver incorreto.  
-- TYPE_NOT_FOUND (minha sugestão) - Registro não encontrado;  
-
-##### Inativar:  
-- TYPE_INVALID_ACCOUNT - Apenas contas cadastradas podem receber movimentação.  
-- TYPE_SUCCESS (minha sugestão)- Operação realizada com sucesso.  
-
-##### Movimentacao:  
-
-- TYPE_INVALID_ACCOUNT - Apenas contas cadastradas podem receber movimentação.  
-- TYPE_INACTIVE_ACCOUNT - Apenas contas ativas podem receber movimentação.  
-- TYPE_INVALID_VALUE - Apenas valores positivos podem ser recebidos.  
-- TYPE_INVALID_TYPE - Tipo diferente de débito ou crédito.  
-- TYPE_INVALID_TYPE = Tipo débito não permitido para conta diferente do usuário logado.  
-
-
-- TYPE_USER_AUTHORIZED;
-
-##### Saldo:  
-
-- TYPE_INVALID_ACCOUNT - Conta não cadastrada.  
-- TYPE_INACTIVE_ACCOUNT - Apenas contas ativas podem receber movimentação.  
-
-#### API Transferência:  
-
-##### Transferir:  
-
-- TYPE_INVALID_ACCOUNT - Apenas contas cadastradas podem realizar transferência.  
-- TYPE_INACTIVE_ACCOUNT - Apenas contas ativas podem realizar transferência.  
-- TYPE_INVALID_VALUE - Valor não positivo.  
+### TYPEs - Minhas sugestões:  
+- TYPE_ALREADY_EXISTS - Quando algum registro a ser cadastrado já estiver cadastrado (exemplo, um CPF que já está cadastrado).  
+- TYPE_OPERATION_NOT_ALLOWED - Quando o usuário atutenticado não tem permissão para executar alguma ação.  
+- TYPE_NOT_FOUND - Quando algum valor válido for recebido via parâmetro/body e não existe no banco para a operação (ex.: uma conta corrente (formato válido) for enviada).  
+- TYPE_SUCCESS - Quando uma operação for bem sucedida.  
 
 ---
 
