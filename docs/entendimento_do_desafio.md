@@ -37,6 +37,32 @@ CREATE TABLE contacorrente (
   salt BYTEA NOT NULL  
 );  
 
+CREATE TABLE movimento (  
+  idmovimento UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+  idcontacorrente UUID NOT NULL,  
+  datamvto TIMESTAMP NOT NULL DEFAULT now(),  
+  tipo CHAR(1) NOT NULL CHECK (tipo IN ('C','D')),  
+  valor NUMERIC(16,2) NOT NULL
+);  
+ALTER TABLE movimento ADD CONSTRAINT movimento_contacorrente_fk FOREIGN KEY (idcontacorrente) REFERENCES contacorrente (idcontacorrente);  
+CREATE INDEX movimento_idcontacorrente_idx ON movimento (idcontacorrente);  
+
+CREATE VIEW vw_saldo_conta AS  
+SELECT  
+  c.idcontacorrente,  
+  COALESCE(  
+    SUM(m.valor) FILTER (WHERE m.tipo = 'C'),  
+    0  
+  )  
+  -  
+  COALESCE(  
+    SUM(m.valor) FILTER (WHERE m.tipo = 'D'),  
+    0  
+  ) AS saldo  
+FROM contacorrente c  
+LEFT JOIN movimento m ON m.idcontacorrente = c.idcontacorrente  
+GROUP BY c.idcontacorrente;  
+
 CREATE TABLE idempotencia (  
   ididempotencia UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
   requisicao UUID NOT NULL UNIQUE,         /* aqui será mitigado possíveis problemas de concorrência */  
@@ -374,6 +400,52 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     - Inserir um registro na tabela movimento contendo ("idcontacorrente", "datamovimento", "tipo" e "valor");  
     - Atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
     STATUS_CODE_204_NO_CONTENT  
+
+
+
+#### GET **saldo** ("/conta/saldo"):  
+
+1. Validar se o token JWT presente no header é válido.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data": null  
+    }  
+
+2. Obter o ID da conta corrente que está dentro do token JWT;  
+
+3. Buscar o registro da conta corrente que está no banco";  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    {  
+        "message": "Conta não localizada",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data": null  
+    }  
+
+4. Validar se o registro da conta corrente está ativo;  
+    - caso não esteja ativo, retornar.  
+    STATUS_CODE_409_CONFLICT  
+    {  
+        "message": "Conta está inativa",  
+        "type": "TYPE_INACTIVE_ACCOUNT",  
+        "data": null  
+    }  
+
+5. Consultar a view vw_saldo_conta filtrando a conta e retornar:
+    STATUS_CODE_200_OK  
+    {  
+        "message": "Consulta de saldo",  
+        "type": "TYPE_SUCCESS",  
+        "data": {
+              "conta": "nr da conta corrente",
+              "nome": "nome do titular da conta corrente",
+              "data_hora": "data e hora da resposta da consulta",
+              "saldo": "valor do saldo da conta",
+        }  
+    }  
 
 
 ---
