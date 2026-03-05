@@ -40,9 +40,9 @@ CREATE TABLE contacorrente (
 CREATE TABLE movimento (  
   idmovimento UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
   idcontacorrente UUID NOT NULL,  
-  datamvto TIMESTAMP NOT NULL DEFAULT now(),  
+  datamvto TIMESTAMPTZ NOT NULL DEFAULT now(),  
   tipo CHAR(1) NOT NULL CHECK (tipo IN ('C','D')),  
-  valor NUMERIC(16,2) NOT NULL
+  valor NUMERIC(16,2) NOT NULL CHECK (valor > 0)  
 );  
 ALTER TABLE movimento ADD CONSTRAINT movimento_contacorrente_fk FOREIGN KEY (idcontacorrente) REFERENCES contacorrente (idcontacorrente);  
 CREATE INDEX movimento_idcontacorrente_idx ON movimento (idcontacorrente);  
@@ -70,6 +70,19 @@ CREATE TABLE idempotencia (
   status_code CHAR(3) NOT NULL DEFAULT '202',  
   resultado TEXT  
 );  
+
+CREATE TABLE transferencia (  
+  idtransferencia UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+  idconta_origem UUID NOT NULL,  
+  idconta_destino UUID NOT NULL,  
+  datamvto TIMESTAMPTZ NOT NULL DEFAULT now(),  
+  valor NUMERIC(16,2) NOT NULL CHECK (valor > 0)  
+);  
+ALTER TABLE transferencia ADD CONSTRAINT chk_contas_diferentes CHECK (idconta_origem <> idconta_destino);  
+ALTER TABLE transferencia ADD CONSTRAINT fk_conta_origem  FOREIGN KEY (idconta_origem)  REFERENCES contacorrente(idcontacorrente);  
+ALTER TABLE transferencia ADD CONSTRAINT fk_conta_destino FOREIGN KEY (idconta_destino) REFERENCES contacorrente(idcontacorrente);  
+
+
 
 ## Premissas assumidas (anotadas no documento de decisões.md)
 - é permitido movimentar conta com saldo negativo;  
@@ -311,18 +324,18 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data": null  
     }  
 
-2. Obter o ID da conta corrente que está dentro do token JWT;  
+2. Obter o ID da conta corrente do usuário (que está dentro do token JWT);  
 
-3. Recebe no body: "conta" (opcional), "id_requisicao", "valor" e "tipo":  
+3. Recebe no body: "uuid da conta corrente", "id_requisicao", "valor" e "tipo":  
     {  
-        "conta": "número nullável (opcional)",  
+        "conta": "uuid da conta corrente",  
         "id_requisicao": "uuid vindo do front",  
         "valor": 0.01,  
         "tipo": "[C|D]"  
     }  
 
-4. Validar o campo "conta" (opcional). Se houver valor neste campo, então este valor deve ser validado: Se é inteiro e se esta compreendido entre 1 e o valor máximo de um long (long.MaxValue);  
-    - caso tenha valor e o valor seja inválido, retornar:  
+4. Validar o campo "conta". Deve ser do tipo **uuid** e obrigatório;  
+    - caso seja inválido, retornar:  
     STATUS_CODE_400_BAD_REQUEST  
     {  
         "message": "Conta inválida",  
@@ -357,16 +370,13 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data": null  
     }  
 
-8. Caso a conta que vier no body tenha valor, considerar ela, se não, considerar o id da conta corrente presente no token, ou seja:
-    - será considerado a "conta" se ela estiver presente no body, ou, será considerado o uuid da conta presente no token.
-
-9. Buscar na tabela "idempotencia", pelo campo da tabela "requisicao" o valor recebido em "id_idempotencia";  
+8. Buscar na tabela "idempotencia", pelo campo da tabela "requisicao" o valor recebido em "id_idempotencia";  
    - Se encontrar registro:
       - Se o valor de "status"==false, (significa que o processo está em andamento), então retornar: 
       - Se o valor de "status"==true, (significa que o processo já terminou), então, retornar o valor que está no campo "resultado" juntamente o com o campo "status_code";  
    - Senão encontrar registro, então, inserir novo registro nesta tabela (requisicao=id_requisicao);  
 
-10. Buscar o registro da conta corrente que está no banco";  
+9. Buscar o registro da conta corrente que está no banco (pelo uuid da conta corrente vindo no body);  
     - caso não encontre o registro, retornar.  
     STATUS_CODE_404_NOT_FOUND  
     - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
@@ -376,7 +386,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data": null  
     }  
 
-11. Validar se o registro da conta corrente está ativo;  
+10. Validar se o registro da conta corrente está ativo;  
     - caso não esteja ativo, retornar.  
     STATUS_CODE_409_CONFLICT  
     - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
@@ -386,8 +396,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data": null  
     }  
 
-12. Se o id do registro de conta corrente não pertencer ao usuário logado, validar se o tipo é "C";
-    - caso não seja, retornar.  
+11. Verificar se o uuid da conta corrente vindo no body da requisão é igual ao uuid da conta corrente vindo no TOKEN JWT da requisição e se o "tipo" é "C". Se os uuid forem iguais e se o "tipo" for "C", então:  
     STATUS_CODE_400_BAD_REQUEST  
     - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
     {  
@@ -416,7 +425,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
 
 2. Obter o ID da conta corrente que está dentro do token JWT;  
 
-3. Buscar o registro da conta corrente que está no banco";  
+3. Buscar o registro da conta corrente que está no banco;  
     - caso não encontre o registro, retornar.  
     STATUS_CODE_404_NOT_FOUND  
     {  
@@ -448,6 +457,213 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
     }  
 
 
+#### POST **consultar** ("/conta/consultar"):
+obs.: Este endpoint não estava previsto no enunciado e a decisão da inclusão dele pode ser vista no documento de decisão.md  
+
+1. Validar se o token JWT presente no header é válido.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data": null  
+    }  
+
+2. Recebe no body: "cpf":  
+    {  
+        "cpf": "12345678901"   
+    }  
+
+3. Validar campo "cpf" que veio no corpo do método: string obrigatória, remover máscara (".", "-"), espaços no início e fim, mínimo e máximo de 11 caracteres, todos numéricos.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "CPF inválido",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data": null  
+    }  
+
+4. Buscar o registro da conta corrente que está no banco, pesquisando pelo CPF;  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    {  
+        "message": "Conta não localizada",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data": null  
+    }  
+
+5. Validar se o registro da conta corrente está ativo;  
+    - caso não esteja ativo, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    {  
+        "message": "Conta não localizada",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data": null  
+    }  
+
+6. Retornar:
+    STATUS_CODE_200_OK  
+    {  
+        "message": "Consulta de Cliente",  
+        "type": "TYPE_SUCCESS",  
+        "data": {
+              "conta": "nr da conta corrente",
+              "nome": "nome do titular da conta corrente",
+              "data_hora": "data e hora da resposta da consulta",
+              "saldo": "valor do saldo da conta",
+        }  
+    }  
+
+# API Transferência:  
+
+### Controller **transferencia**:  
+
+#### POST **Transferir** ("/transferencia/transferir"):  
+
+1. Validar se o token JWT presente no header é válido.  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_401_UNAUTHORIZED  
+    {  
+        "message": "Usuário não autorizado",  
+        "type": "TYPE_USER_UNAUTHORIZED",  
+        "data": null  
+    }  
+
+2. Obter o ID da conta corrente (de origem) que está dentro do token JWT;  
+
+3. Recebe no body: "conta_destino", "id_requisicao", "valor" e "tipo":  
+    {  
+        "id_requisicao": "uuid vindo do front",  
+        "conta_destino": "número da conta de destino",  
+        "valor": 0.01  
+    }  
+
+4. Validar o campo "id_requisicao". Deve ser do tipo **uuid** e obrigatório;  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "ID Requisição inválido",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data": null  
+    }  
+
+5. Validar o campo "conta_destino". Deve ser do tipo **uuid** e obrigatório;  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "Conta destino inválida",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data": null  
+    }  
+
+6. Validar o campo "valor" (obrigatório). Deve ser um valor maior que zero;  
+    - caso seja inválido, retornar:  
+    STATUS_CODE_400_BAD_REQUEST  
+    {  
+        "message": "Valor inválido",  
+        "type": "TYPE_INVALID_VALUE",  
+        "data": null  
+    }  
+
+7. Validar se o uuid da conta de destino é o mesmo uuid presente no token JWT e caso seja o mesmo, deve-se retornar;  
+    STATUS_CODE_409_CONFLICT
+    {  
+        "message": "Não é possível transferir para a mesma conta",  
+        "type": "TYPE_OPERATION_NOT_ALLOWED",  
+        "data": null  
+    }  
+
+8. Buscar na tabela "idempotencia", pelo campo da tabela "requisicao" o valor recebido em "id_idempotencia";  
+   - Se encontrar registro:
+      - Se o valor de "status"==false, (significa que o processo está em andamento), então retornar: 
+      - Se o valor de "status"==true, (significa que o processo já terminou), então, retornar o valor que está no campo "resultado" juntamente o com o campo "status_code";  
+   - Senão encontrar registro, então, inserir novo registro nesta tabela (requisicao=id_requisicao);  
+
+9. Buscar no banco o registro da conta corrente de origem (a que veio no TOKEN JWT);  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+    {  
+        "message": "Conta Corrente de Origem não localizada",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data": null  
+    }  
+
+10. Validar se o registro da conta corrente de origem está ativo;  
+    - caso não esteja ativo, retornar.  
+    STATUS_CODE_409_CONFLICT  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+    {  
+        "message": "Conta Corrente de Origem está inativa",  
+        "type": "TYPE_INACTIVE_ACCOUNT",  
+        "data": null  
+    }  
+
+11. Buscar no banco o registro da conta corrente de destino (a que veio no body da requisição);  
+    - caso não encontre o registro, retornar.  
+    STATUS_CODE_404_NOT_FOUND  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+    {  
+        "message": "Conta Corrente de Destino não localizada",  
+        "type": "TYPE_INVALID_ACCOUNT",  
+        "data": null  
+    }  
+
+12. Validar se o registro da conta corrente de destino está ativo;  
+    - caso não esteja ativo, retornar.  
+    STATUS_CODE_409_CONFLICT  
+    - e atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+    {  
+        "message": "Conta Corrente de Destino está inativa",  
+        "type": "TYPE_INACTIVE_ACCOUNT",  
+        "data": null  
+    }  
+
+13. Efetuar a chamada a api de conta-corrente/movimento, e efetuar um débito;  
+    - enviar o TOKEN JWT e o body da requisição será:  
+    {  
+        "conta": "uuid da conta corrente de origem",  
+        "id_requisicao": "gerar um novo uuid aleatório",  
+        "valor": 0.01,  
+        "tipo": "D"  
+    }  
+    obs.: 
+        - a conta de origem já existe e foi validada, então não é para dar erro;  
+        - o id_requisicao será gerado aleatóriamente, e não é para dar erro;  
+        - o valor já foi validado (que é diferente de zero e positivo);  
+        - o tipo é "D", e também não é para dar erro;  
+        - o uuid presente no TOKEN JWT é o mesmo do enviado via body, porém, o tipo será "D", então isso não dará erro;  
+        - ou seja, não foi possível identificar nenhuma falha lógica nesta operação;  
+    - Após chamar esta api, deve-se aguardar o retorno. Com o retorno, validar se o mesmo é STATUS_CODE_204_NO_CONTENT.
+        - Se o status code de retorno da chamada a outra api for STATUS_CODE_204_NO_CONTENT, então prossegue para o próximo passo;
+        - Se o status code de retorno da chamada a outra api não for STATUS_CODE_204_NO_CONTENT, então, deve-se atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+
+14. Efetuar a chamada a api de conta-corrente/movimento, e efetuar um crédito;  
+    - enviar o TOKEN JWT e o body da requisição será:  
+    {  
+        "conta": "uuid da conta corrente de destino",  
+        "id_requisicao": "gerar um novo uuid aleatório",  
+        "valor": 0.01,  
+        "tipo": "C"  
+    }  
+    obs.: 
+        - a conta de destino já existe e foi validada, então não é para dar erro;  
+        - o id_requisicao será gerado aleatóriamente, e não é para dar erro;  
+        - o valor já foi validado (que é diferente de zero e positivo);  
+        - o tipo é "C", e também não é para dar erro;  
+        - o uuid presente no TOKEN JWT não é o mesmo do enviado via body, então isso não dará erro;  
+        - ou seja, não foi possível identificar nenhuma falha lógica nesta operação;  
+    - Após chamar esta api, deve-se aguardar o retorno. Com o retorno, validar se o mesmo é STATUS_CODE_204_NO_CONTENT.
+        - Se o status code de retorno da chamada a outra api for STATUS_CODE_204_NO_CONTENT, então prossegue para o próximo passo;
+        - Se o status code de retorno da chamada a outra api não for STATUS_CODE_204_NO_CONTENT, então, deve-se atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+
+15. Caso não tenha nenhum erro, então;  
+    - Inserir um registro na tabela transferencia ("idconta_origem", "idconta_destino", "datamvto" e "valor");  
+    - Atualizar o registro da tabela idempotencia (cujo "requisicao"="id_requisicao"") para: "status"="true" e preencher "status_code" e "resultado" com os valores retornados por esta requisicao;  
+    STATUS_CODE_204_NO_CONTENT  
+
+
+
 ---
 
 ## Padrão de status code:  
@@ -459,7 +675,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
 - STATUS_CODE_400_BAD_REQUEST - Quando a requisição é inválida.  
 - STATUS_CODE_401_UNAUTHORIZED - Quando não há token ou ele está inválido.  
 - STATUS_CODE_403_FORBIDDEN - Quando o usuário não tem permissão.  
-- STATUS_CODE_404_NOT_FOUND - Quando o recurso não existe.
+- STATUS_CODE_404_NOT_FOUND - Quando o recurso não existe.  
 - STATUS_CODE_409_CONFLICT - Quando o recurso já existe ou, conflito de informações.  
 
 ## Padrão de respostas rest:

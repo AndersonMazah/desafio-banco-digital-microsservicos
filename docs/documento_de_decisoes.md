@@ -45,6 +45,16 @@
 **SITUAÇÃO 7**: Na tabela idempotencia não existe um campo de status_code, e o nome do campo da cheve primária está como "chave_" (diferente do padrão de nome das demais tabelas).  
 **DECISÃO 7**: Decidi incluir o campo "status_code" (string de 3 caracteres) e renomear o campo da chave primária para "ididempotencia"  
 
+**SITUAÇÃO 8**: O time de segurança solicitou que os dados de usuário não transitem entre as APIs. Com isso, torna-se impossível implementar o endpoint de transferência, pois ele precisaria receber o número da conta e encaminhá-lo para a API de movimento.  
+**DECISÃO 8**: A solução é criar um endpoint para consulta de CPF. Esse fluxo é semelhante ao utilizado em aplicativos bancários quando se realiza uma transferência via chave Pix CPF: o usuário informa a chave e, em seguida, é exibido o primeiro nome do cliente para confirmação antes de prosseguir com a operação. Assim, optei por incluir um novo endpoint de consulta que recebe um CPF como parâmetro e retorna ao front apenas o primeiro nome do cliente e o UUID da conta. Com essas informações, o front poderá chamar o endpoint de transferência utilizando o UUID da conta de destino, sem a necessidade de enviar o número da conta do cliente.  
+obs.: O endpoint de consultar CPF usará o verbo POST ao invés de GET, pois entendo ser mais seguro para não deixar informações de clientes serem rastreadas pela rede.  
+
+---
+
+## API Transferência:
+
+**SITUAÇÃO 1**: No enunciado fala que a api de transferencia deve receber o "número da conta de destino" e existe uma restrição de que não se pode transitar o número de conta entre as api.  
+**DECISÃO 1**: Com isso, decidi que o tipo de parâmetro não será mais o "número da conta destino" e sim o "uuid da conta de destino".  
 
 ---
 
