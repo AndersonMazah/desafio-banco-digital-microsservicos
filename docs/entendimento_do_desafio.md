@@ -27,6 +27,8 @@
 
 ## Banco de dados:  
 
+CREATE DATABASE "desafio-banco-digital";  
+
 CREATE TABLE contacorrente (  
   idcontacorrente UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
   numero BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,  
@@ -53,9 +55,7 @@ SELECT
   COALESCE(  
     SUM(m.valor) FILTER (WHERE m.tipo = 'C'),  
     0  
-  )  
-  -  
-  COALESCE(  
+  ) - COALESCE(  
     SUM(m.valor) FILTER (WHERE m.tipo = 'D'),  
     0  
   ) AS saldo  
@@ -443,7 +443,7 @@ obs.: Não recebe TOKEN JWT no HEADER (ver mais sobre isso em "documento_de_deci
         "data": null  
     }  
 
-5. Consultar a view vw_saldo_conta filtrando a conta e retornar:
+5. Consultar a view "vw_saldo_conta" filtrando a conta e retornar:
     STATUS_CODE_200_OK  
     {  
         "message": "Consulta de saldo",  
@@ -502,15 +502,15 @@ obs.: Este endpoint não estava previsto no enunciado e a decisão da inclusão 
     }  
 
 6. Retornar:
+    obs.: Deve-se retornar apenas o primeiro nome do titulas da conta.
     STATUS_CODE_200_OK  
     {  
         "message": "Consulta de Cliente",  
         "type": "TYPE_SUCCESS",  
-        "data": {
-              "conta": "nr da conta corrente",
-              "nome": "nome do titular da conta corrente",
-              "data_hora": "data e hora da resposta da consulta",
-              "saldo": "valor do saldo da conta",
+        "data": {  
+              "conta": "nr da conta corrente",  
+              "nome": "retonar apenas o PRIMEIRO nome do titular da conta corrente",  
+              "data_hora": "data e hora da resposta da consulta"  
         }  
     }  
 
