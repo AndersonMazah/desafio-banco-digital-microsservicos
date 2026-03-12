@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContaCorrente.Domain", "Con
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContaCorrente.Application", "ContaCorrente.Application\ContaCorrente.Application.csproj", "{7FFF4F4F-06EA-450F-B1A3-0EA9622D3827}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContaCorrente.Infra", "ContaCorrente.Infra\ContaCorrente.Infra.csproj", "{52A271DA-B8A5-4D70-A683-EC53E8864874}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContaCorrente.Infrastructure", "ContaCorrente.Infrastructure\ContaCorrente.Infrastructure.csproj", "{52A271DA-B8A5-4D70-A683-EC53E8864874}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContaCorrente.WebApi", "ContaCorrente.WebApi\ContaCorrente.WebApi.csproj", "{A3F8B2F4-59C7-43BA-88E5-3708AEF71411}"
 EndProject
