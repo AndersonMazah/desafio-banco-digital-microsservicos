@@ -37,10 +37,7 @@ public sealed class TransferenciaController : ControllerBase
         {
             return Unauthorized(new { message = "Usuário não autorizado", type = "TYPE_USER_UNAUTHORIZED", data = (object?)null });
         }
-        var result = await _mediator.Send(
-            new TransferirCommand(idContaOrigem, request.IdRequisicao, request.ContaDestino, request.Valor),
-            cancellationToken);
-
+        var result = await _mediator.Send(new TransferirCommand(idContaOrigem, request.IdRequisicao, request.ContaDestino, request.Valor), cancellationToken);
         return this.ToActionResult(result);
     }
 

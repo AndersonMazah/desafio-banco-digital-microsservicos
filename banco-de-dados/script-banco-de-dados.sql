@@ -1,5 +1,3 @@
-CREATE DATABASE "desafio-banco-digital";  
-
 CREATE TABLE contacorrente (  
   idcontacorrente UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
   numero BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,  
