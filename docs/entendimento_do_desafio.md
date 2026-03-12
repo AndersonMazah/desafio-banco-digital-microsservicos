@@ -509,6 +509,7 @@ obs.: Este endpoint não estava previsto no enunciado e a decisão da inclusão 
         "type": "TYPE_SUCCESS",  
         "data": {  
               "conta": "nr da conta corrente",  
+              "uuid": "uuid da conta corrente",  
               "nome": "retonar apenas o PRIMEIRO nome do titular da conta corrente",  
               "data_hora": "data e hora da resposta da consulta"  
         }  
@@ -534,7 +535,7 @@ obs.: Este endpoint não estava previsto no enunciado e a decisão da inclusão 
 3. Recebe no body: "conta_destino", "id_requisicao", "valor" e "tipo":  
     {  
         "id_requisicao": "uuid vindo do front",  
-        "conta_destino": "número da conta de destino",  
+        "conta_destino": "uuid da conta de destino",  
         "valor": 0.01  
     }  
 

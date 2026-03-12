@@ -14,11 +14,11 @@
 
 ## Definição do Banco de Dados:
 
-**SITUAÇÃO 1**: No desenho de arquitetura, informa-se que cada API tem seu próprio banco de dados. Porém, também consta que "o banco" deve estar em um container. Nesse caso, há uma contradição: ou o desenho está incorreto ao indicar um banco para cada API, ou a informação de que "o banco" deve rodar em um container não está clara. Se houver mais de um banco, o correto seria indicar que cada banco deve rodar em um container.  
-**DECISÃO 1**: Embora exista a informação de que o banco deve rodar em um container, entendo que o mais adequado seria que cada microsserviço tivesse seu próprio banco de dados, sendo assim, cada um dos bancos deve rodar em seu próprio container.  
+**SITUAÇÃO 1**: No desenho de arquitetura, informa-se que cada API tem seu próprio banco de dados. Porém, também consta que "o banco" deve estar em um container (ou seja, um banco). Nesse caso, há uma contradição: ou o desenho está incorreto ao indicar um banco para cada API, ou a informação de que "o banco" deve rodar em um container não está clara. Se houver mais de um banco, o correto seria indicar que cada banco deve rodar em um container.  
+**DECISÃO 1**: Vou seguir com o entendimento de que "o banco" (um banco) apenas deve existir e não um banco por api.  
 
-**SITUAÇÃO 2**: A empresa usa Oracle e o enunciado sugere SQLite. SQLite é um banco embutido em arquivo, não um banco servidor, então não se encaixa bem em um container exclusivo de banco com porta, como no caso do Oracle. Além disso, meu computador não suporta rodar múltiplas instâncias de Oracle em containers.  
-**DECISÃO 2**: Entendo que o banco não é o ponto central do desafio, já que o enunciado sugere SQLite. Vou utilizar o PostgreSQL por ser um banco servidor relacional, fácil de executar via Docker, e mais próximo do Oracle do que SQLite.  
+**SITUAÇÃO 2**: A empresa usa Oracle e o enunciado sugere SQLite.  
+**DECISÃO 2**: Entendo que o banco de dados não é o ponto central do desafio e que não há uma exigência específica, apenas uma sugestão. Por isso, vou utilizar o PostgreSQL, pois ele é mais próximo do Oracle do que o SQLite.  
 
 ---
 
